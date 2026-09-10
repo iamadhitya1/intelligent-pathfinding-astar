@@ -1,142 +1,149 @@
+"""
+Intelligent Pathfinding using the A* Search Algorithm
+----------------------------------------------------
+Finds the shortest path between two points on a 2D grid with obstacles.
+
+A* explores nodes in order of f(n) = g(n) + h(n):
+    g(n) - actual cost from the start to n
+    h(n) - heuristic estimate from n to the goal (Manhattan distance)
+
+Movement is 4-directional (up/down/left/right) at a uniform cost of 1.
+Manhattan distance is admissible and consistent for this movement model,
+so A* is guaranteed to return an optimal path. (If diagonal moves were
+added, the heuristic would need to change to octile/Euclidean distance.)
+"""
+
 import heapq
+from itertools import count
+
 import matplotlib.pyplot as plt
 
-# --- 1. Define the Grid Environment ---
+
+# --- 1. Define the grid environment ---
 class Grid:
     def __init__(self, width, height, start, goal, obstacles):
         self.width = width
         self.height = height
         self.start = start
         self.goal = goal
-        self.obstacles = obstacles
-        # Create a list of all possible nodes
-        self.nodes = [[(x, y) for y in range(height)] for x in range(width)]
+        self.obstacles = set(obstacles)
 
     def is_valid(self, node):
         x, y = node
-        # Check if node is within bounds and not an obstacle
-        return 0 <= x < self.width and 0 <= y < self.height and node not in self.obstacles
+        return (
+            0 <= x < self.width
+            and 0 <= y < self.height
+            and node not in self.obstacles
+        )
 
     def get_neighbors(self, node):
         x, y = node
-        # Define movements: Right, Left, Up, Down
-        neighbors = [(x+1, y), (x-1, y), (x, y+1), (x, y-1)]
-        valid_neighbors = [n for n in neighbors if self.is_valid(n)]
-        return valid_neighbors
+        candidates = [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
+        return [n for n in candidates if self.is_valid(n)]
 
-# --- 2. Implement A* Search Algorithm ---
+
+# --- 2. A* search ---
 class AStar:
     def __init__(self, grid):
         self.grid = grid
         self.start = grid.start
         self.goal = grid.goal
 
-    def manhattan_distance(self, node1, node2):
-        # Heuristic: |x1 - x2| + |y1 - y2|
-        return abs(node1[0] - node2[0]) + abs(node1[1] - node2[1])
+    @staticmethod
+    def manhattan_distance(a, b):
+        return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
     def reconstruct_path(self, came_from, current):
-        path = []
+        path = [current]
         while current in came_from:
-            path.append(current)
             current = came_from[current]
-        path.append(self.start)
+            path.append(current)
         path.reverse()
         return path
 
     def find_path(self):
-        open_set = []
-        # Priority Queue: stores (f_score, node)
-        heapq.heappush(open_set, (0, self.start))
-        
+        # Priority queue holds (f_score, tie_breaker, node). The counter keeps
+        # entries strictly ordered so two nodes with equal f never get compared.
+        counter = count()
+        open_set = [(self.manhattan_distance(self.start, self.goal),
+                     next(counter), self.start)]
+
         came_from = {}
-        
-        # g_score: Cost from start to current node
-        # Initialize all to infinity
-        g_score = {node: float('inf') for row in self.grid.nodes for node in row}
-        g_score[self.start] = 0
-        
-        # f_score: Estimated total cost (g_score + heuristic)
-        f_score = {node: float('inf') for row in self.grid.nodes for node in row}
-        f_score[self.start] = self.manhattan_distance(self.start, self.goal)
+        g_score = {self.start: 0}          # default is treated as infinity
+        closed = set()                     # nodes already expanded
 
         while open_set:
-            # Pop node with lowest f_score
-            current_f, current = heapq.heappop(open_set)
+            _, _, current = heapq.heappop(open_set)
+
+            # Skip stale queue entries left behind by an earlier, worse path.
+            if current in closed:
+                continue
+            closed.add(current)
 
             if current == self.goal:
                 return self.reconstruct_path(came_from, current)
 
             for neighbor in self.grid.get_neighbors(current):
-                # Tentative g_score is current g + 1 (assuming cost of 1 per step)
+                if neighbor in closed:
+                    continue
                 tentative_g = g_score[current] + 1
-
-                if tentative_g < g_score[neighbor]:
-                    # This path to neighbor is better than any previous one
+                if tentative_g < g_score.get(neighbor, float("inf")):
                     came_from[neighbor] = current
                     g_score[neighbor] = tentative_g
-                    f_score[neighbor] = tentative_g + self.manhattan_distance(neighbor, self.goal)
-                    
-                    # Add to priority queue if not already there (or update it)
-                    heapq.heappush(open_set, (f_score[neighbor], neighbor))
+                    f_score = tentative_g + self.manhattan_distance(neighbor, self.goal)
+                    heapq.heappush(open_set, (f_score, next(counter), neighbor))
 
-        return None # No path found
+        return None  # no path exists
+
 
 # --- 3. Visualization ---
-def visualize_path(grid, path):
-    plt.figure(figsize=(8, 8))
-    
-    # Draw the grid
-    for x in range(grid.width):
-        for y in range(grid.height):
-            if (x, y) in grid.obstacles:
-                # Draw Obstacle (Gray)
-                plt.fill_between([x, x+1], [y, y], [y+1, y+1], color='gray')
-            else:
-                # Draw Empty Space (White with borders)
-                plt.plot([x, x+1, x+1, x, x], [y, y, y+1, y+1, y], color='black', linewidth=0.5)
+def visualize_path(grid, path, save_as="Figure_1.png"):
+    fig, ax = plt.subplots(figsize=(8, 8))
 
-    # Draw the Path
+    for (ox, oy) in grid.obstacles:
+        ax.add_patch(plt.Rectangle((ox, oy), 1, 1, color="gray"))
+
     if path:
-        for node in path:
-            # Mark path nodes with 'X'
-            plt.text(node[0] + 0.5, node[1] + 0.5, 'X', ha='center', va='center', fontsize=12, color='green', weight='bold')
+        xs = [n[0] + 0.5 for n in path]
+        ys = [n[1] + 0.5 for n in path]
+        ax.plot(xs, ys, color="green", linewidth=2, marker="o", markersize=4,
+                label="path")
 
-    # Draw Start (Blue Circle) and Goal (Red Circle)
-    plt.plot(grid.start[0] + 0.5, grid.start[1] + 0.5, marker='o', markersize=15, color='blue', label='Start')
-    plt.plot(grid.goal[0] + 0.5, grid.goal[1] + 0.5, marker='o', markersize=15, color='red', label='Goal')
+    ax.plot(grid.start[0] + 0.5, grid.start[1] + 0.5, "o", markersize=14,
+            color="blue", label="start")
+    ax.plot(grid.goal[0] + 0.5, grid.goal[1] + 0.5, "o", markersize=14,
+            color="red", label="goal")
 
-    plt.xlim(0, grid.width)
-    plt.ylim(0, grid.height)
-    plt.grid(False)
-    plt.title('A* Pathfinding Simulation')
-    plt.legend(loc='upper right')
+    ax.set_xticks(range(grid.width + 1))
+    ax.set_yticks(range(grid.height + 1))
+    ax.set_xlim(0, grid.width)
+    ax.set_ylim(0, grid.height)
+    ax.set_aspect("equal")
+    ax.grid(True, linewidth=0.5)
+    ax.set_title("A* Pathfinding Simulation")
+    ax.legend(loc="upper left")
+
+    fig.savefig(save_as, dpi=120, bbox_inches="tight")
     plt.show()
 
-# --- Main Execution ---
+
+# --- Main execution ---
 if __name__ == "__main__":
-    # Define Start, Goal, and Obstacles
     start_pos = (1, 1)
     goal_pos = (8, 8)
-    
-    # Let's create a "wall" of obstacles to force the algorithm to go around
     obstacles_list = [
-        (3, 3), (4, 3), (5, 3), (6, 3), # Horizontal wall
-        (6, 4), (6, 5), (6, 6)          # Vertical wall
+        (3, 3), (4, 3), (5, 3), (6, 3),   # horizontal wall
+        (6, 4), (6, 5), (6, 6),           # vertical wall
     ]
 
-    # Initialize Environment
-    print("Initializing Grid...")
-    my_grid = Grid(10, 10, start_pos, goal_pos, obstacles_list)
-    
-    # Run A* Algorithm
-    print("Running A* Search...")
-    astar_solver = AStar(my_grid)
-    final_path = astar_solver.find_path()
+    grid = Grid(10, 10, start_pos, goal_pos, obstacles_list)
 
-    if final_path:
-        print(f"Path Found: {final_path}")
-        print("Displaying visualization...")
-        visualize_path(my_grid, final_path)
+    print("Running A* search...")
+    path = AStar(grid).find_path()
+
+    if path:
+        print(f"Path found ({len(path)} steps, cost {len(path) - 1}):")
+        print(path)
+        visualize_path(grid, path)
     else:
         print("No path found.")

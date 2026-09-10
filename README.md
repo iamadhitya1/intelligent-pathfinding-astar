@@ -25,6 +25,8 @@ This makes A\* both **complete** (always finds a path if one exists) and **optim
 - **Manhattan distance** heuristic for grid-based movement
 - Path reconstruction from goal back to start
 - **Matplotlib visualization** — renders the grid, obstacles, optimal path, start and goal points
+- **Closed set + lazy deletion** — expanded nodes are never revisited, and stale priority-queue entries are skipped instead of re-processed
+- **Sparse `g`/`f` scores** — costs are stored in a dict with an infinity default, not pre-filled for every cell
 
 ---
 
@@ -34,7 +36,7 @@ This makes A\* both **complete** (always finds a path if one exists) and **optim
 ![Matplotlib](https://img.shields.io/badge/Matplotlib-11557C?style=flat-square&logo=python&logoColor=white)
 
 - **Language:** Python 3
-- **Libraries:** `heapq` (built-in), `matplotlib`
+- **Libraries:** `heapq`, `itertools.count` (built-in), `matplotlib`
 - **Concepts:** Graph Search, Heuristic Functions, Priority Queues, OOP
 
 ---
@@ -44,8 +46,9 @@ This makes A\* both **complete** (always finds a path if one exists) and **optim
 ```
 intelligent-pathfinding-astar/
 ├── main.py            # A* algorithm implementation + visualization
+├── requirements.txt   # Python dependencies
 ├── Figure_1.png       # Sample output — visualized path
-├── Major Project.pdf  # Full project report (SmartED Innovations internship)
+├── Major Project.pdf  # Full project report
 └── README.md
 ```
 
@@ -59,7 +62,7 @@ intelligent-pathfinding-astar/
 
 ### Install dependency
 ```bash
-pip install matplotlib
+pip install -r requirements.txt
 ```
 
 ### Run the algorithm
@@ -69,13 +72,12 @@ python main.py
 
 ### Expected output
 ```
-Initializing Grid...
-Running A* Search...
-Path Found: [(1, 1), (2, 1), (2, 2), (2, 3), (2, 4), ...]
-Displaying visualization...
+Running A* search...
+Path found (15 steps, cost 14):
+[(1, 1), (2, 1), (3, 1), (4, 1), (5, 1), (6, 1), (7, 1), (8, 1), (8, 2), ...]
 ```
 
-A matplotlib window will open showing the 10×10 grid with the optimal path marked in green **X** markers, navigating around the wall obstacles from Start (blue) to Goal (red).
+A matplotlib window opens (and `Figure_1.png` is saved) showing the 10×10 grid with the optimal path in green, routing around the wall obstacles from Start (blue) to Goal (red).
 
 ---
 
@@ -90,7 +92,9 @@ Obstacles (a wall + vertical extension):
   Vertical:   (6,4) (6,5) (6,6)
 ```
 
-The algorithm explores nodes using a priority queue ordered by `f(n)`. When it reaches the goal, it reconstructs the path by backtracking through the `came_from` dictionary.
+The algorithm explores nodes from a priority queue ordered by `f(n)`. Each node is expanded at most once (tracked in a `closed` set); when a shorter route to a node is found, a fresh queue entry is pushed and the old one is ignored when it surfaces. On reaching the goal the path is rebuilt by backtracking through `came_from`.
+
+Movement is 4-directional at uniform cost, which is what makes the Manhattan heuristic admissible and consistent here. Adding diagonal moves would require an octile/Euclidean heuristic to keep the optimality guarantee.
 
 ---
 
